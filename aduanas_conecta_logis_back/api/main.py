@@ -1,4 +1,3 @@
-# aduanas_conecta_logis_back/api/main.py (VERSIÓN FINAL CON MANEJO DE NaN)
 
 import os
 from pathlib import Path
@@ -6,7 +5,7 @@ from datetime import date
 from typing import List, Optional
 
 import duckdb
-import numpy as np # <-- AÑADIR IMPORT
+import numpy as np 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -106,7 +105,6 @@ def get_average_weight_per_bulto(start_date: date, end_date: date):
     con = get_db_connection()
     df = con.execute(query).fetchdf()
     con.close()
-    # Aplicamos la misma limpieza aquí
     df_cleaned = df.replace({np.nan: None})
     result = df_cleaned.to_dict(orient="records")
     return result[0] if result else {"average_weight_per_bulto": None}
