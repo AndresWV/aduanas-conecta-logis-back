@@ -1,8 +1,6 @@
 
 from prefect import flow, get_run_logger
 import os
-
-# Importamos todo lo que necesitamos desde nuestros módulos
 from .config import DATA_SOURCES, DB_PATH, TABLE_NAMES, REJECTED_DATA_PATH
 from .extract import extract_from_files
 from .transform import clean_and_transform_split
@@ -35,7 +33,6 @@ def etl_parent_flow():
             separator=export_config["separator"],
             decimal_separator=export_config["decimal_separator"]
         )
-        # ↓↓↓ CORRECCIÓN: Eliminamos el argumento 'dataset_name' ↓↓↓
         df_exp_good, df_exp_rejected = clean_and_transform_split(df=df_exportaciones_raw)
         
         bultos_config = DATA_SOURCES["bultos"]
@@ -45,23 +42,17 @@ def etl_parent_flow():
             separator=bultos_config["separator"],
             decimal_separator=bultos_config["decimal_separator"]
         )
-        # ↓↓↓ CORRECCIÓN: Eliminamos el argumento 'dataset_name' también aquí ↓↓↓
         df_bul_good, df_bul_rejected = clean_and_transform_split(df=df_bultos_raw)
-
-        # --- PASO 2: Carga ---
         load_exp_task = load_to_duckdb(df=df_exp_good, db_path=DB_PATH, table_name=TABLE_NAMES["exportaciones"])
         save_rejected_records(df=df_exp_rejected, file_path=REJECTED_DATA_PATH, separator=export_config["separator"])
         
         load_bul_task = load_to_duckdb(df=df_bul_good, db_path=DB_PATH, table_name=TABLE_NAMES["bultos"])
         save_rejected_records(df=df_bul_rejected, file_path=REJECTED_DATA_PATH, separator=bultos_config["separator"])
-
-        # --- PASO 3: Modelamiento de Datos ---
         modeling_task = create_analytical_models(
             db_path=DB_PATH,
             wait_for=[load_exp_task, load_bul_task]
         )
         
-        # --- PASO 4: Análisis de Calidad ---
         report = generate_quality_report(
             db_path=DB_PATH,
             table_name=TABLE_NAMES["exportaciones"],

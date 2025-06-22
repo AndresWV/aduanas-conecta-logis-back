@@ -1,55 +1,113 @@
-# Backend de Datos - Aduanas Conecta Logística
+# Pipeline y API de Datos de Exportaciones
 
-**Nombre del Proyecto:** `aduanas-conecta-logis-back`
-**Autor:** [Tu Nombre]
+**Autor:** [Tu Nombre Completo]
 
-## Descripción
-Este proyecto corresponde al backend y al pipeline de datos para la prueba técnica de Data Engineering. Implementa un pipeline que extrae registros de exportación del portal de datos de Chile, los procesa, analiza su calidad y los carga en una base de datos DuckDB.
+## Descripción General
 
-Adicionalmente, expone los resultados a través de una API REST construida con FastAPI, lista para ser consumida por una interfaz web.
+Este proyecto es una solución integral de **Ingeniería de Datos** diseñada para cumplir con los requisitos de una prueba técnica para un rol de **DataOps**. El sistema implementa un pipeline de datos robusto y orquestado que extrae, transforma y carga (ETL) registros de exportación del Servicio Nacional de Aduanas de Chile.
 
-Este proyecto utiliza **Poetry** para la gestión de dependencias y entornos virtuales.
+La solución está construida con herramientas modernas y profesionales, incluyendo:
+* **Python** como lenguaje principal.
+* **Prefect** para la orquestación del pipeline, permitiendo una ejecución de tareas clara, dependiente y monitorizable.
+* **Pandas** para la manipulación y **curación avanzada de datos**, manejando inconsistencias, valores nulos y errores de formato.
+* **DuckDB** como base de datos analítica en modo `in-process`, ideal para un rendimiento rápido en consultas complejas.
+* **FastAPI** para servir los datos procesados a través de una API RESTful, rápida y con documentación automática.
+* **Poetry** para una gestión de dependencias y entornos de desarrollo limpia y reproducible.
+
+Adicionalmente, el pipeline implementa una capa de **modelamiento de datos**, creando vistas analíticas sobre los datos limpios para simplificar y optimizar las consultas de negocio.
+
+## Características Principales
+
+* **Orquestación Moderna:** El flujo ETL está definido y orquestado con Prefect, facilitando su ejecución y monitoreo.
+* **Curación de Datos Robusta:** El pipeline no solo transforma los datos, sino que los "cura":
+    * Valida los registros basándose en columnas críticas (`NUMEROIDENT`).
+    * Maneja una gran variedad de inconsistencias en los datos de origen (fechas, números, texto).
+    * **Segrega los datos inválidos** a un archivo `rejected_records.txt` para su posterior análisis, asegurando que solo los datos de alta calidad lleguen al Data Warehouse.
+* **Capa de Modelamiento (Vistas Analíticas):** Sobre las tablas base, se crea una tabla intermedia (`datos_idty`) y un conjunto de **Vistas SQL** que contienen la lógica de negocio pre-calculada. Esto desacopla la lógica de la API y optimiza las consultas.
+* **API de Alto Rendimiento:** La API RESTful construida con FastAPI sirve los datos desde las vistas analíticas, proveyendo respuestas rápidas y eficientes a preguntas de negocio complejas.
+* **Operación vía API:** Todo el sistema, incluyendo la ejecución de la ETL, se puede operar a través de la API, lo que permite una fácil integración con otros sistemas o paneles de administración.
+* **Entorno Reproducible:** El uso de Poetry y un archivo `pyproject.toml` garantiza que cualquier desarrollador pueda replicar el entorno y las dependencias de forma exacta y sin conflictos.
 
 ## Estructura del Proyecto
+
+El código está organizado por responsabilidades (API, ETL) dentro de un paquete de Python estándar para mantener el orden y la escalabilidad.
+
 ```
 aduanas-conecta-logis-back/
+├── aduanas_conecta_logis_back/
+│   ├── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── main.py              # Lógica de la API FastAPI
+│   └── etl/
+│       ├── __init__.py
+│       ├── analyze.py           # Tarea de análisis de calidad de datos
+│       ├── config.py            # Módulo de configuración central
+│       ├── extract.py           # Tarea de extracción de datos
+│       ├── load.py              # Tareas de carga (datos buenos y rechazados)
+│       ├── main.py              # Flujo principal de Prefect (el orquestador)
+│       ├── modeling.py          # Tarea de modelamiento (creación de vistas)
+│       └── transform.py         # Tarea de curación y transformación
+│
 ├── data/
-│   └── datawarehouse.db  # Generado tras la ejecución del pipeline
-├── main.py               # Backend con FastAPI (Parte 1.3)
-├── pipeline.py           # Pipeline con Prefect (Parte 2)
-├── queries.sql           # Consultas SQL de referencia (Parte 1.2)
-├── pyproject.toml        # Archivo de configuración y dependencias de Poetry
-├── poetry.lock           # Archivo de dependencias exactas
+│   ├── bultosAbril2025.txt
+│   ├── bultosMarzo2025.txt
+│   ├── exportacionesAbril2025.txt
+│   ├── exportacionesMarzo2025.txt
+│   └── datawarehouse.db         # Base de datos generada por la ETL
+│
+├── rejected_records.txt         # Archivo de salida con datos inválidos
+├── .env                         # Archivo de configuración de entorno
+├── pyproject.toml               # Dependencias del proyecto para Poetry
 └── README.md
 ```
 
-## Requisitos Previos
-- Python 3.9 o superior
-- [Poetry](https://python-poetry.org/docs/#installation) instalado en tu sistema.
+## Configuración del Entorno
 
-## Instalación
-1.  Clona este repositorio o descomprime los archivos en una carpeta.
+### Requisitos Previos
+* Python 3.9+
+* Poetry instalado en tu sistema.
+
+### Pasos de Instalación
+1.  Clona este repositorio en tu máquina local.
 2.  Navega hasta el directorio raíz del proyecto (`aduanas-conecta-logis-back`).
-3.  Instala todas las dependencias usando Poetry. Este comando creará un entorno virtual y descargará las librerías especificadas en `pyproject.toml`.
+3.  **Configura tu entorno local:**
+    * Crea un archivo llamado `.env` en la raíz del proyecto.
+    * Añade el siguiente contenido al archivo `.env`. Esto permite que el proyecto sea flexible sin hardcodear nombres de archivos.
+        ```ini
+        DATA_FOLDER=data
+        DATABASE_FILENAME=datawarehouse.db
+        ```
+4.  **Instala las dependencias:**
+    Ejecuta el siguiente comando. Poetry creará un entorno virtual aislado y descargará todas las librerías necesarias.
     ```bash
     poetry install
     ```
 
-## Ejecución
+## Flujo de Operación
 
-Todos los comandos deben ser ejecutados con `poetry run` desde la raíz del proyecto para asegurar que se utiliza el entorno virtual correcto.
+Este sistema está diseñado para ser operado a través de la API, que actúa como el panel de control central.
 
-### 1. Ejecutar el Pipeline de Datos (Prefect)
-Este comando ejecuta el pipeline ETL completo: extrae, transforma, valida la calidad y carga los datos en el archivo `data/datawarehouse.db`.
+### Paso 1: Iniciar el Servidor de la API
+Este comando levanta el servidor web que expone todos los endpoints y espera órdenes. Ejecútalo desde la raíz del proyecto.
 ```bash
-poetry run python pipeline.py
+poetry run uvicorn aduanas_conecta_logis_back.api.main:app --reload
 ```
+El servidor estará disponible en **`http://127.0.0.1:8000`**.
 
-### 2. Iniciar el Servidor del Backend
-Este comando inicia la API REST que sirve los datos desde la base de datos.
-```bash
-poetry run uvicorn main:app --reload
-```
-La API estará disponible en `http://127.0.0.1:8000`. Puedes explorar sus endpoints y probarlos interactivamente a través de la documentación autogenerada por Swagger UI en:
+### Paso 2: Ejecutar el Pipeline ETL
+1.  Abre tu navegador y ve a la documentación interactiva de la API: **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**.
+2.  Busca la sección **ETL** (de color azul) y expande el endpoint `POST /api/etl/trigger`.
+3.  Haz clic en `Try it out` y luego en el botón azul `Execute`.
 
-[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+La API te responderá inmediatamente, pero el proceso ETL completo comenzará a ejecutarse en la terminal donde iniciaste el servidor. Podrás ver los logs de Prefect en tiempo real.
+
+### Paso 3: Verificar y Consumir los Resultados
+Una vez que el flujo termine con el mensaje `¡Flujo ETL completado exitosamente!` en la terminal:
+
+1.  **Verifica los artefactos:**
+    * El archivo `data/datawarehouse.db` habrá sido creado o actualizado.
+    * El archivo `rejected_records.txt` contendrá las filas que no pasaron la validación.
+2.  **Consulta los datos a través de la API:**
+    * En la misma página de la documentación (`/docs`), utiliza los endpoints `GET` (de color verde) para hacer preguntas de negocio.
+    * Por ejemplo, expande `GET /api/trends/fob-daily`, introduce un rango de fechas como `2025-04-01` a `2025-04-30` y presiona `Execute` para ver los resultados.

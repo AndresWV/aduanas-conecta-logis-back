@@ -16,7 +16,6 @@ def create_analytical_models(db_path: Path):
         con = duckdb.connect(database=str(db_path), read_only=False)
 
         # --- 1. Crear la tabla intermedia 'datos_idty' ---
-        # Usamos BIGINT para los códigos y RUTs que son números muy grandes.
         create_table_sql = """
         CREATE OR REPLACE TABLE datos_idty AS
         SELECT
@@ -32,8 +31,6 @@ def create_analytical_models(db_path: Path):
         logger.info("Tabla 'datos_idty' creada exitosamente.")
 
         # --- 2. Crear las Vistas (Views) Analíticas ---
-        # No necesitan cambios, ya que leerán de la tabla 'datos_idty' ya creada con los tipos correctos.
-
         # Vista para tendencias diarias de FOB
         create_view_trends_sql = """
         CREATE OR REPLACE VIEW V_TENDENCIAS_DIARIAS AS
