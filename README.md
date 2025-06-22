@@ -1,6 +1,6 @@
 # Pipeline y API de Datos de Exportaciones
 
-**Autor:** [Tu Nombre Completo]
+**Autor:** Andrés Wallberg - andres.wv99@gmail.com 
 
 ## Descripción General
 
