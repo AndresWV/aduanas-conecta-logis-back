@@ -1,11 +1,18 @@
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
-BASE_DIR = Path.cwd() 
-DATA_DIR = BASE_DIR / "data"
-DB_PATH = DATA_DIR / "datawarehouse.db"
 
-# --- Mapeo de Columnas Requeridas a Posiciones en los Archivos ---
-# Basado en el análisis de los archivos .txt, que no tienen encabezados.
+load_dotenv()
+
+base_dir_str = os.getenv("PROJECT_BASE_DIR")
+if not base_dir_str:
+    raise ValueError("La variable de entorno PROJECT_BASE_DIR no está definida en el archivo .env")
+
+BASE_DIR = Path(base_dir_str)
+DATA_DIR = BASE_DIR / os.getenv("DATA_FOLDER", "data") # "data" es un valor por defecto
+DB_PATH = DATA_DIR / os.getenv("DATABASE_FILENAME", "datawarehouse.db")
+
 
 # Para 'bultos': La relación es directa y clara.
 BULTOS_COLS_MAP = {
