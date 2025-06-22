@@ -1,62 +1,63 @@
-# aduanas_conecta_logis_back/etl/transform.py (VERSIÓN DE CURACIÓN DEFINITIVA)
-
 import pandas as pd
 from prefect import task, get_run_logger
+from typing import Tuple
 
-@task(name="Clean and Transform Data")
-def clean_and_transform(df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
+@task(name="Clean, Validate, and Split Data")
+def clean_and_transform_split(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Aplica una curación de datos robusta: valida el ID, repara el resto y enriquece.
+    Aplica curación de datos y luego divide el DataFrame en dos:
+    uno con los registros válidos y otro con los registros rechazados.
     """
     logger = get_run_logger()
-    logger.info(f"Iniciando curación de datos para '{dataset_name}'. Filas iniciales: {len(df)}")
+    logger.info(f"Iniciando curación y validación. Filas iniciales: {len(df)}")
     
-    df_clean = df.copy()
-
     # 1. Limpieza Básica
-    df_clean.drop_duplicates(inplace=True)
-    for col in df_clean.columns:
-        if df_clean[col].dtype == 'object':
-            df_clean[col] = df_clean[col].str.strip()
+    # Eliminamos duplicados primero sobre el dataframe original
+    df.drop_duplicates(inplace=True)
+    # Limpiar espacios en blanco en todas las columnas
+    df_clean = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
-    # 2. Validación de la Columna Crítica: NUMEROIDENT
+    # 2. Conversión de Tipos con Manejo de Errores
+    # Guardamos los resultados de la conversión en nuevas columnas temporales
+    if "FECHAACEPT" in df_clean.columns:
+        df_clean["FECHAACEPT_norm"] = df_clean["FECHAACEPT"].str.zfill(8)
+        df_clean["FECHAACEPT_clean"] = pd.to_datetime(df_clean["FECHAACEPT_norm"], format='%d%m%Y', errors='coerce')
+
     if "NUMEROIDENT" in df_clean.columns:
-        initial_rows = len(df_clean)
-        df_clean["NUMEROIDENT"] = pd.to_numeric(df_clean["NUMEROIDENT"], errors='coerce')
-        df_clean.dropna(subset=["NUMEROIDENT"], inplace=True)
-        df_clean["NUMEROIDENT"] = df_clean["NUMEROIDENT"].astype(int)
-        rows_removed = initial_rows - len(df_clean)
-        if rows_removed > 0:
-            logger.info(f"Se eliminaron {rows_removed} filas por tener un NUMEROIDENT inválido.")
+        df_clean["NUMEROIDENT_clean"] = pd.to_numeric(df_clean["NUMEROIDENT"], errors='coerce')
 
-    # 3. Reparación y Conversión Tolerante del Resto de Columnas
-    if "FECHAACEPT" in df_clean.columns:
-        df_clean["FECHAACEPT"] = df_clean["FECHAACEPT"].str.zfill(8)
-        df_clean["FECHAACEPT"] = pd.to_datetime(df_clean["FECHAACEPT"], format='%d%m%Y', errors='coerce')
-        # Si la fecha es mala, la llenamos con una fecha por defecto para no perder la fila
-        if df_clean["FECHAACEPT"].isnull().any():
-            default_date = pd.to_datetime('1900-01-01')
-            logger.warning(f"Se encontraron fechas inválidas. Se reemplazarán con {default_date.date()}.")
-            df_clean["FECHAACEPT"].fillna(default_date, inplace=True)
+    # 3. Identificar las Filas Malas
+    # Una fila es mala si su ID o su Fecha no se pudieron convertir (son Nulos)
+    bad_rows_mask = df_clean["NUMEROIDENT_clean"].isnull() | df_clean["FECHAACEPT_clean"].isnull()
+    
+    # 4. Separar los dataframes usando la máscara.
+    # Ahora los índices coinciden perfectamente.
+    df_rejected = df[bad_rows_mask]
+    df_good = df_clean[~bad_rows_mask].copy()
 
-    numeric_cols = [
-        'FOBUNITARIO', 'PESOBRUTOTOTAL', 'PESOBRUTOITEM', 'CANTIDADBULTO', 
-        'NRO_EXPORTADOR', 'CODIGOARANCEL'
-    ]
+    logger.info(f"{len(df_rejected)} filas fueron rechazadas por datos críticos inválidos.")
+    
+    # 5. Limpieza final solo para los datos buenos
+    df_good["NUMEROIDENT"] = df_good["NUMEROIDENT_clean"].astype(int)
+    df_good["FECHAACEPT"] = df_good["FECHAACEPT_clean"]
+
+    numeric_cols = ['FOBUNITARIO', 'PESOBRUTOTOTAL', 'PESOBRUTOITEM', 'CANTIDADBULTO', 'NRO_EXPORTADOR', 'CODIGOARANCEL']
     for col in numeric_cols:
-        if col in df_clean.columns:
-            df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
-            df_clean[col].fillna(0, inplace=True) # Llenamos con 0 cualquier error de conversión
-            # Convertimos a entero si no tiene decimales
-            if df_clean[col].dtype == 'float64' and (df_clean[col] % 1 == 0).all():
-                df_clean[col] = df_clean[col].astype(int)
+        if col in df_good.columns:
+            df_good[col] = pd.to_numeric(df_good[col], errors='coerce').fillna(0)
+            if df_good[col].dtype == 'float64' and (df_good[col] % 1 == 0).all():
+                df_good[col] = df_good[col].astype(int)
 
-    # 4. Enriquecimiento de Datos
-    df_clean['hora_lectura_archivo'] = pd.Timestamp.now()
-    if "FECHAACEPT" in df_clean.columns:
-        df_clean['año'] = df_clean['FECHAACEPT'].dt.year
-        df_clean['mes'] = df_clean['FECHAACEPT'].dt.month
-    df_clean['hora_procesamiento'] = pd.Timestamp.now()
+    # 6. Enriquecimiento y selección final de columnas
+    df_good['hora_lectura_archivo'] = pd.Timestamp.now()
+    df_good['año'] = df_good['FECHAACEPT'].dt.year
+    df_good['mes'] = df_good['FECHAACEPT'].dt.month
+    df_good['hora_procesamiento'] = pd.Timestamp.now()
+    
+    # Nos quedamos solo con las columnas originales y las de enriquecimiento
+    final_good_columns = list(df.columns) + ['hora_lectura_archivo', 'año', 'mes', 'hora_procesamiento']
+    df_good = df_good[final_good_columns]
 
-    logger.info(f"Curación y transformación completadas. Filas finales: {len(df_clean)}")
-    return df_clean
+    logger.info(f"Curación completada. Filas válidas: {len(df_good)}. Filas rechazadas: {len(df_rejected)}.")
+    
+    return df_good, df_rejected

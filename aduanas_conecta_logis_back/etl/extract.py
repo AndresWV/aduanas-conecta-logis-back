@@ -1,4 +1,4 @@
-# aduanas_conecta_logis_back/etl/extract.py (VERSIÓN FINAL)
+
 from pathlib import Path
 from typing import List, Dict
 import pandas as pd
