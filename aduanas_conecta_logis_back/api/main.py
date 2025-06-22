@@ -1,32 +1,41 @@
 
-import os
-from pathlib import Path
 from datetime import date
 from typing import List, Optional
-
+import pandas as pd
 import duckdb
-import numpy as np 
-from dotenv import load_dotenv
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Importamos la ruta a la DB y el flujo de la ETL
+# --- IMPORTACIONES CLAVE ---
+# Importamos la ruta a la DB y el flujo de la ETL desde su ÚNICA fuente de verdad en 'config.py'
 from aduanas_conecta_logis_back.etl.config import DB_PATH
 from aduanas_conecta_logis_back.etl.main import etl_parent_flow
 
-# --- Configuración Inicial y Modelos (sin cambios) ---
-app = FastAPI(title="API y Orquestador de Datos de Aduanas", version="1.3.0")
+# --- Configuración Inicial ---
+app = FastAPI(
+    title="API y Orquestador de Datos de Aduanas",
+    description="Provee endpoints para consultar datos y para disparar la ejecución de la ETL.",
+    version="FINAL" # ¡Versión final!
+)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+# --- Lógica de la Base de Datos ---
 def get_db_connection():
+    """Establece y devuelve una conexión a la base de datos DuckDB."""
+    # DB_PATH ahora se importa directamente, garantizando que la API y la ETL siempre miren al mismo lugar.
     if not DB_PATH.exists():
-        raise HTTPException(status_code=503, detail=f"Base de datos no encontrada. Ejecute la ETL primero.")
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Base de datos no encontrada en la ruta '{DB_PATH}'. Por favor, ejecute la ETL primero."
+        )
     try:
         return duckdb.connect(database=str(DB_PATH), read_only=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al conectar con la base de datos: {e}")
 
+# --- Modelos de Datos (Pydantic) ---
 class TrendData(BaseModel):
     period: str
     average_fob: float
@@ -41,70 +50,40 @@ class ExporterRanking(BaseModel):
 class AverageWeight(BaseModel):
     average_weight_per_bulto: Optional[float]
 
-# --- Endpoints ---
-
+# --- Endpoint para Disparar la ETL ---
 @app.post("/api/etl/trigger", status_code=202, tags=["ETL"])
 def trigger_etl(background_tasks: BackgroundTasks):
     background_tasks.add_task(etl_parent_flow)
-    return {"message": "Proceso ETL iniciado en segundo plano."}
+    return {"message": "Proceso ETL iniciado en segundo plano. Revisa los logs de la consola para ver el progreso."}
 
+# --- Endpoints de Consulta de Datos ---
 @app.get("/api/trends/fob-daily", response_model=List[TrendData], tags=["Tendencias"])
 def get_daily_fob_trends(start_date: date, end_date: date):
-    query = f"""
-        WITH daily_avg AS (
-            SELECT CAST(FECHAACEPT AS DATE) AS period_date, AVG(FOBUNITARIO) AS average_fob
-            FROM exportaciones
-            WHERE CAST(FECHAACEPT AS DATE) BETWEEN '{start_date}' AND '{end_date}'
-            GROUP BY period_date
-        ), daily_trends AS (
-            SELECT strftime(period_date, '%Y-%m-%d') AS period, average_fob,
-                   LAG(average_fob, 1) OVER (ORDER BY period_date) AS prev_day_avg
-            FROM daily_avg
-        )
-        SELECT period, average_fob,
-               CASE WHEN prev_day_avg > 0 THEN ((average_fob - prev_day_avg) / prev_day_avg) * 100 ELSE NULL END AS change_from_previous
-        FROM daily_trends ORDER BY period;
-    """
+    """Consulta la vista pre-calculada de tendencias diarias."""
+    query = f"SELECT * FROM V_TENDENCIAS_DIARIAS WHERE CAST(period AS DATE) BETWEEN '{start_date}' AND '{end_date}';"
     con = get_db_connection()
     df = con.execute(query).fetchdf()
     con.close()
-    
-    # --- PASO DE CORRECCIÓN AÑADIDO ---
-    # Reemplazamos los NaN de Pandas con None de Python para que sea compatible con JSON
     df_cleaned = df.replace({np.nan: None})
-    
     return df_cleaned.to_dict(orient="records")
 
 @app.get("/api/rankings/exporters-weekly", response_model=List[ExporterRanking], tags=["Rankings"])
 def get_weekly_exporter_rankings(start_date: date, end_date: date):
-    query = f"""
-        WITH weekly_fob AS (
-            SELECT strftime(FECHAACEPT, '%Y-%W') AS week, NRO_EXPORTADOR, SUM(FOBUNITARIO) AS total_fob
-            FROM exportaciones
-            WHERE CAST(FECHAACEPT AS DATE) BETWEEN '{start_date}' AND '{end_date}'
-            GROUP BY week, NRO_EXPORTADOR
-        )
-        SELECT week, RANK() OVER (PARTITION BY week ORDER BY total_fob DESC) AS rank, NRO_EXPORTADOR, total_fob
-        FROM weekly_fob ORDER BY week, rank;
-    """
+    """Consulta la vista pre-calculada de rankings semanales."""
+    start_week = start_date.strftime('%Y-%W')
+    end_week = end_date.strftime('%Y-%W')
+    query = f"SELECT * FROM V_RANKING_SEMANAL WHERE week BETWEEN '{start_week}' AND '{end_week}';"
     con = get_db_connection()
     df = con.execute(query).fetchdf()
     con.close()
-    # Aplicamos la misma limpieza aquí por si acaso
     df_cleaned = df.replace({np.nan: None})
     return df_cleaned.to_dict(orient="records")
 
 @app.get("/api/stats/average-weight-per-bulto", response_model=AverageWeight, tags=["Estadísticas"])
 def get_average_weight_per_bulto(start_date: date, end_date: date):
-    query = f"""
-        SELECT SUM(exp.PESOBRUTOITEM) / NULLIF(SUM(bul.CANTIDADBULTO), 0) AS average_weight_per_bulto
-        FROM exportaciones AS exp
-        JOIN bultos_exportaciones AS bul ON exp.NUMEROIDENT = bul.NUMEROIDENT
-        WHERE CAST(exp.FECHAACEPT AS DATE) BETWEEN '{start_date}' AND '{end_date}';
-    """
+    """Consulta la vista pre-calculada de peso promedio por bulto."""
+    query = f"SELECT AVG(average_weight_per_bulto) as average_weight_per_bulto FROM V_PESO_PROMEDIO_BULTO WHERE fecha_aceptacion BETWEEN '{start_date}' AND '{end_date}';"
     con = get_db_connection()
-    df = con.execute(query).fetchdf()
-    con.close()
-    df_cleaned = df.replace({np.nan: None})
-    result = df_cleaned.to_dict(orient="records")
-    return result[0] if result else {"average_weight_per_bulto": None}
+    result = con.execute(query).fetchdf().to_dict(orient="records")
+    df_cleaned = pd.DataFrame(result).replace({np.nan: None})
+    return df_cleaned.to_dict(orient='records')[0]
