@@ -1,39 +1,32 @@
-from pathlib import Path
-import os
-from dotenv import load_dotenv
+# aduanas_conecta_logis_back/etl/config.py (VERSIÓN FINAL CON METADATA)
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
 load_dotenv()
 
-base_dir_str = os.getenv("PROJECT_BASE_DIR")
-if not base_dir_str:
-    raise ValueError("La variable de entorno PROJECT_BASE_DIR no está definida en el archivo .env")
-
-BASE_DIR = Path(base_dir_str)
-DATA_DIR = BASE_DIR / os.getenv("DATA_FOLDER", "data") # "data" es un valor por defecto
+# --- Rutas Dinámicas y Relativas ---
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BASE_DIR / os.getenv("DATA_FOLDER", "data")
 DB_PATH = DATA_DIR / os.getenv("DATABASE_FILENAME", "datawarehouse.db")
 
+# --- Mapeo de Columnas Requeridas a Posiciones Reales (Según Metadata) ---
 
-# Para 'bultos': La relación es directa y clara.
 BULTOS_COLS_MAP = {
-    # Nombre Requerido: Posición en el archivo (empezando en 0)
-    "NUMEROIDENT": 0,
-    "FECHAACEPT": 1,
-    "CANTIDADBULTO": 4
+    "NUMEROIDENT": 0,    # Corresponde a 'NUMERO_IDENTIFICACION_DUS' en titulos.csv
+    "FECHAACEPT": 1,     # Corresponde a 'FECHA_ACEPTACION_DUS' en titulos.csv
+    "CANTIDADBULTO": 4   # Corresponde a 'CANTIDAD_BULTOS' en titulos.csv
 }
 
-# Para 'exportaciones': El archivo es complejo. Hacemos suposiciones razonables
-# para una prueba técnica, enfocándonos en la primera parte de cada línea,
-# antes del separador '~'. Esto nos da datos más consistentes.
 EXPORTACIONES_COLS_MAP = {
-    # Nombre Requerido: Posición en el archivo
-    "FECHAACEPT": 0,
-    "NUMEROIDENT": 1,
-    "NRO_EXPORTADOR": 28,  # Posición del RUT/ID del exportador. Es un identificador estable.
-    "PESOBRUTOTOTAL": 24,  # Peso bruto total declarado para el envío.
-    "FOBUNITARIO": 23,     # Usamos FOBTOTAL como proxy para FOBUNITARIO. Ver justificación.
-    "PESOBRUTOITEM": 24,   # Usamos PESOBRUTOTOTAL como proxy. Ver justificación.
-    "CODIGOARANCEL": 64    # Posición estimada del código arancelario después del '~'. Es la más variable.
+    "FECHAACEPT": 0,       # Posición 0: FECHA_ACEPTACION_DUS
+    "NUMEROIDENT": 1,      # Posición 1: NUMERO_IDENTIFICACION_DUS
+    "NRO_EXPORTADOR": 28,  # Posición 28: RUT_EXPORTADOR
+    "CODIGOARANCEL": 64,   # Posición 64: CODIGO_ARANCEL_ITEM
+    "FOBUNITARIO": 66,     # Posición 66: VALOR_FOB_ITEM
+    "PESOBRUTOITEM": 65,   # Posición 65: PESO_BRUTO_ITEM
+    "PESOBRUTOTOTAL": 24   # Posición 24: PESO_BRUTO_TOTAL_DUS
 }
 
 # --- Configuración de Fuentes de Datos para la ETL ---
@@ -45,7 +38,7 @@ DATA_SOURCES = {
         ],
         "cols_map": EXPORTACIONES_COLS_MAP,
         "separator": ";",
-        "decimal_separator": "," # Importante para valores como '22155,04'
+        "decimal_separator": ","
     },
     "bultos": {
         "files": [
@@ -54,7 +47,7 @@ DATA_SOURCES = {
         ],
         "cols_map": BULTOS_COLS_MAP,
         "separator": ";",
-        "decimal_separator": "." # No hay decimales, pero se mantiene por consistencia
+        "decimal_separator": "."
     }
 }
 

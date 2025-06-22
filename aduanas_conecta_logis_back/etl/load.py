@@ -1,3 +1,4 @@
+# aduanas_conecta_logis_back/etl/load.py (VERSIÓN FINAL)
 import duckdb
 import pandas as pd
 from pathlib import Path
@@ -5,12 +6,7 @@ from prefect import task, get_run_logger
 
 @task(name="Load Data to DuckDB")
 def load_to_duckdb(df: pd.DataFrame, db_path: Path, table_name: str):
-    """
-    Carga un DataFrame en una tabla de DuckDB, reemplazándola si ya existe.
-    """
     logger = get_run_logger()
-    
-    # Asegurarse de que el directorio de la base de datos existe
     db_path.parent.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"Cargando {len(df)} filas en la tabla '{table_name}' en '{db_path}'...")
