@@ -3,7 +3,7 @@ name = "aduanas-conecta-logis-back"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Andrés Wallberg",email = "awallberg@entel.cl"}
+    {name = "Andrés Wallberg",email = "andres.wv99@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.11"
